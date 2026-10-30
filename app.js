@@ -7,9 +7,10 @@
 //              6枚目: 病院で利用者のカードを作り直す(暗証番号を忘れた・カードをなくした)
 //              10枚目: 登録をやめる/戻す・この猫を外す・止めた病院の知らせ・「断った」は緊急の中だけ知らせる
 //              11版(10b): 見直しの画面と文の直し(暗証番号のたしかめ・印刷の番号をホームにも・Google の部品は管理者が押した時だけ・「あとで」は1日出さない ほか)
+//              12版: 速さ(開いた時の問い合わせを1回に・前の画面を先に出して裏で確かめる・写真の控えと見えた分だけ取る)。画面の色・形・文は変えない
 // 受け付けは Apps Script(text/plain の JSON を POST)。ログインはログインカード(合言葉の QR + 4けた)と、管理者の Google。
 'use strict';
-const APP_VER = 11;
+const APP_VER = 12;
 const CFG = window.MATSUNYAN_CONFIG || {};
 const AUTH_KEY = 'matsunyan.auth', DEV_KEY = 'matsunyan.dev', ADMIN_SEEN = 'matsunyan.adminSeen', RENEW_LATER = 'matsunyan.renewLater', HAND_KEY = 'matsunyan.hand';
 const $ = s => document.querySelector(s);
@@ -42,10 +43,35 @@ const errText = r => r.error === 'hospital_stopped' && auth && auth.role === 'us
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let auth = null;
 try { auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null'); } catch (e) { auth = null; }
-const saveAuth = a => { auth = a; if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); };
+const saveAuth = a => { if (!(a && auth && a.type === auth.type && a.pass === auth.pass)) dropDevice(); auth = a; if (a) localStorage.setItem(AUTH_KEY, JSON.stringify(a)); else localStorage.removeItem(AUTH_KEY); };
 const rid = () => { const b = new Uint8Array(12); crypto.getRandomValues(b); return Array.from(b, x => x.toString(16).padStart(2, '0')).join(''); };
 function device() { let d = localStorage.getItem(DEV_KEY); if (!d) { d = 'd' + rid(); localStorage.setItem(DEV_KEY, d); } return d; }
 const siteUrl = () => CFG.SITE_URL || (location.origin + location.pathname);
+
+/* ---- 端末の控え(12版): ホーム・一覧・メッセージの前の答えと写真。人が替わる時・ログアウトで消す。書く操作の後は答えの控えを消す ---- */
+const VIEW_KEY = 'matsunyan.view.', PHOTO_CACHE = 'matsunyan-photos';
+const READS = new Set(['hello', 'boot', 'whoami', 'hospitalPublic', 'reissueInfo', 'userHome', 'hospitalHome', 'catList', 'catDetail', 'catPhoto', 'msgList', 'hospitalUserList', 'adminHospitalList', 'adminSosList']);
+function viewClear() { Object.keys(localStorage).filter(k => k.startsWith(VIEW_KEY)).forEach(k => localStorage.removeItem(k)); }
+function dropDevice() { viewClear(); if (window.caches) caches.delete(PHOTO_CACHE).catch(() => {}); }
+function viewGet(k) { try { return JSON.parse(localStorage.getItem(VIEW_KEY + k) || 'null'); } catch (e) { return null; } }
+function viewPut(k, ver, r) { try { localStorage.setItem(VIEW_KEY + k, JSON.stringify({ ver: ver || '', r })); } catch (e) { /* 入らない時は控えない */ } }
+let loadSeq = 0;   // 画面を替えたら増える。古い返事で今の画面を描かない
+// 前の答えがあれば先に描き、受け付けに確かめる。同じなら描き直さない・違えば描き直す。返事は最後の答え(画面を離れた・失敗の時は null)
+async function fresh(key, get, draw, fail, usable) {
+  const my = ++loadSeq; let c = viewGet(key); if (c && usable && !usable(c.r)) c = null;
+  if (c) draw(c.r);
+  let r = await get(c && c.ver ? { have: c.ver } : {});
+  if (r.ok && r.unchanged && !c) r = await get({});
+  if (r.ok && !r.unchanged) viewPut(key, r.ver, r);
+  if (my !== loadSeq) return null;
+  if (!r.ok) { fail(r); return null; }
+  if (r.unchanged) return c.r;
+  draw(r); return r;
+}
+const dayJst = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
+const homeOk = r => !r.day || r.day === dayJst();   // 病院の「今日の確認の番号」は、その日の物だけ出す
+let bootP = null, noBoot = false;   // 開いた時の1回(boot)の返事。ホームの読み込みが受け取る。前の受け付けには boot が無い
+const homeGet = (action, h) => { const p = bootP; bootP = null; return p ? p.then(b => b.ok ? b.home : b.error === 'unknown_action' ? api(action, h) : b) : api(action, h); };
 
 async function api(action, data = {}) {
   if (!CFG.GAS_URL) return { ok: false, error: 'server_not_configured' };
@@ -56,6 +82,7 @@ async function api(action, data = {}) {
     const res = await fetch(CFG.GAS_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow' });
     return await res.json();
   } catch (e) { return { ok: false, error: 'network' }; }
+  finally { if (!READS.has(action)) viewClear(); }
 }
 // 押してから返事が来るまでボタンを止める(二度押しの防ぎ)
 async function busy(btn, fn) { if (btn.disabled) return; btn.disabled = true; try { return await fn(); } finally { btn.disabled = false; } }
@@ -72,6 +99,7 @@ const NAVS = {
 const navOf = w => w === 'adopter' ? 'userA' : w === 'owner' ? 'userO' : 'user';
 let navKind = '';
 function view(id) {
+  loadSeq++;
   document.querySelectorAll('section.view').forEach(s => s.classList.toggle('hidden', s.id !== 'v-' + id));
   document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === (id === 'cat' ? 'cats' : id)));
   window.scrollTo(0, 0);
@@ -129,13 +157,18 @@ $('#card-go').onclick = () => busy($('#card-go'), async () => {
   await routeCard();
 });
 async function routeCard() {
-  const w = await api('whoami');
-  if (!w.ok) { if (w.error === 'network') { show($('#card-err'), ERR.network); return; } saveAuth(null); return goLogin(errText(w)); }
+  const c = viewGet('home'), quick = !!c && homeOk(c.r) && !!auth.role && !(auth.renew && auth.renew.due);
+  const p = noBoot ? null : api('boot', c && c.ver ? { have: c.ver } : {}); bootP = p;
+  if (quick) { if (auth.role === 'hospital') goHospital(); else goUser(); }   // 前の画面を先に出す(答えはホームの読み込みが受け取る)
+  let w = p ? await p : null;
+  if (w && w.error === 'unknown_action') { noBoot = true; w = null; } else if (w && w.ok) w = w.who;
+  if (!w) w = await api('whoami');
+  if (!w.ok) { bootP = null; if (w.error === 'network') { if (!quick) show($('#card-err'), ERR.network); return; } saveAuth(null); return goLogin(errText(w)); }
   auth.role = w.role; auth.hospital = w.hospital; saveAuth(auth);
-  if (w.role === 'hospital') return goHospital();
+  if (w.role === 'hospital') return quick ? undefined : goHospital();
   auth.nick = w.nick; auth.renew = w.renew || null; if (w.wants) auth.wants = w.wants; saveAuth(auth);
-  if (w.renew && w.renew.due && localStorage.getItem(RENEW_LATER) !== today()) return goRenew();   // 年1回の「登録を続けますか」
-  return goUser();
+  if (w.renew && w.renew.due && localStorage.getItem(RENEW_LATER) !== today()) { bootP = null; return goRenew(); }   // 年1回の「登録を続けますか」
+  return quick ? undefined : goUser();
 }
 /* ---- 年1回の確認 ---- */
 function renewText(r) { return r.lapsed ? `年に1回の確認が無いまま、確認が無いまま30日すぎたので、手を挙げた印を今は止めています(消してはいません)。「続ける」を押すと元に戻ります。`
@@ -249,8 +282,9 @@ $('#card-done').onclick = () => { printing = null; $('#card-out').classList.add(
 /* ---- 病院 ---- */
 async function loadHospitalHome() {
   show($('#hos-err'), '');
-  const r = await api('hospitalHome');
-  if (!r.ok) { if (r.error === 'network') return show($('#hos-err'), ERR.network); saveAuth(null); return goLogin(errText(r)); }
+  await fresh('home', h => homeGet('hospitalHome', h), drawHospitalHome, r => { if (r.error === 'network') return show($('#hos-err'), ERR.network); saveAuth(null); goLogin(errText(r)); }, homeOk);
+}
+function drawHospitalHome(r) {
   const [y, m, d] = r.day.split('-').map(Number);
   $('#code-label').textContent = `今日の確認の番号(${m}月${d}日)`; $('#code').textContent = r.code;
   $('#hos-info').textContent = '名古屋市 ' + r.hospital.ward + ' ・ ☎ ' + r.hospital.phone;
@@ -272,7 +306,7 @@ async function loadHospitalHome() {
     d.innerHTML = `<div class="cat"><div class="ph">🐱</div><div class="grow"><div class="big">${esc(c.name)}</div><div class="note" style="margin:2px 0">${esc([c.age, c.sex].filter(Boolean).join(' ・ '))} ・ 飼い主 ${esc(c.ownerNick)}</div></div></div>`
       + `<div class="note">${esc(['毛色 ' + c.color, c.nature && '性格 ' + c.nature, c.illness && '持病 ' + c.illness, c.vaccine && 'ワクチン ' + c.vaccine, '不妊手術 ' + c.neuter].filter(Boolean).join(' / '))}</div>`
       + `<div class="btn2"><button class="btn" type="button" data-ok="1">確認して登録</button><button class="btn sub" type="button" data-ok="0">直してもらう</button></div>`;
-    if (c.hasPhoto) catPhotoInto(d.querySelector('.ph'), c.id);
+    if (c.hasPhoto) catPhotoInto(d.querySelector('.ph'), c.id, c.ph);
     d.querySelectorAll('[data-ok]').forEach(b => { b.onclick = () => busy(b, async () => {
       const yes = b.dataset.ok === '1'; let note = '';
       if (yes) { if (!confirm(c.name + ' を確認して登録しますか?\n登録すると、ほかの利用者にも見えるようになります。')) return; }
@@ -463,16 +497,29 @@ const SEEK_TAG = '<span class="tag r" data-seek="1">引き継ぎ先を探して�
 $('#u-renew-go').onclick = () => goRenew();
 const STATE_TAG = { '登録済み': ['g', '登録済み'], '確認待ち': ['r', '病院の確認待ち'], '直してもらう': ['r', '直してもらう'], '引き継ぎ済み': ['', '引き継ぎ済み'] };
 let photoUrls = [];
-async function catPhotoInto(el, id) {
-  const r = await api('catPhoto', { catId: id }); if (!r.ok) return;
-  const b = Uint8Array.from(atob(r.data), c => c.charCodeAt(0)), u = URL.createObjectURL(new Blob([b], { type: 'image/jpeg' })); photoUrls.push(u);
+// 写真は猫IDと写真の印(ph)で端末に控える。前の受け付けは印を返さないので控えない
+async function photoBlob(id, ph) {
+  const key = './photo-cache/' + id + '/' + ph, store = ph && window.caches ? await caches.open(PHOTO_CACHE).catch(() => null) : null;
+  const hit = store && await store.match(key).catch(() => null); if (hit) return hit.blob();
+  const r = await api('catPhoto', { catId: id }); if (!r.ok) return null;
+  const b = new Blob([Uint8Array.from(atob(r.data), c => c.charCodeAt(0))], { type: 'image/jpeg' });
+  if (store) store.put(key, new Response(b)).catch(() => {});
+  return b;
+}
+async function catPhotoInto(el, id, ph) {
+  const b = await photoBlob(id, ph); if (!b) return;
+  const u = URL.createObjectURL(b); photoUrls.push(u);
   el.innerHTML = ''; const i = new Image(); i.src = u; i.alt = '猫の写真'; el.appendChild(i);
 }
+// 一覧の写真は、画面に近づいた分だけ取る(頭数が多くても同時の問い合わせを増やさない)
+const photoSeen = 'IntersectionObserver' in window ? new IntersectionObserver((es, o) => es.forEach(e => { if (!e.isIntersecting) return; o.unobserve(e.target); e.target._photo(); }), { rootMargin: '300px' }) : null;
+function lazyPhoto(el, id, ph) { if (!photoSeen) return catPhotoInto(el, id, ph); el._photo = () => catPhotoInto(el, id, ph); photoSeen.observe(el); }
 const catSub = c => [c.age, c.sex, c.color].filter(Boolean).join(' ・ ');
 async function loadUserHome() {
   show($('#u-err'), '');
-  const r = await api('userHome');
-  if (!r.ok) { if (r.error === 'network') return show($('#u-err'), ERR.network); saveAuth(null); return goLogin(errText(r)); }
+  await fresh('home', h => homeGet('userHome', h), drawUserHome, r => { if (r.error === 'network') return show($('#u-err'), ERR.network); saveAuth(null); goLogin(errText(r)); });
+}
+function drawUserHome(r) {
   if (auth.wants !== r.wants) { auth.wants = r.wants; saveAuth(auth); setNav(navOf(r.wants)); document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === 'u-home')); }
   setHeader('まつにゃん', r.nick, true);
   $('#u-line').textContent = r.nick + ' さん ・ かかりつけ: ' + (r.hospital ? r.hospital.name : '');
@@ -492,7 +539,7 @@ async function loadUserHome() {
     const d = document.createElement('div'); d.className = 'card'; d.dataset.cat = c.id; const [cls, txt] = STATE_TAG[c.state] || ['', c.state];
     d.innerHTML = `<div class="cat"><div class="ph">🐱</div><div class="grow"><div class="big">${esc(c.name)}</div><div class="note" style="margin:2px 0">${esc(catSub(c))}</div><span class="tag ${cls}" data-state="${esc(c.state)}">${esc(txt)}</span>${c.state === '登録済み' ? `<span class="tag">手を挙げた人 ${c.raised}人</span>` + (c.wide ? '<span class="tag">ほかの病院にも見せる</span>' : '') + (c.seeking ? SEEK_TAG : '') : ''}</div></div>`
       + (c.state === '直してもらう' ? `<div class="fixnote">病院から: ${esc(c.note || '直してほしい所があります')}</div><button class="btn sm" type="button" data-fix="1">直して送る</button>` : '');
-    if (c.hasPhoto) catPhotoInto(d.querySelector('.ph'), c.id);
+    if (c.hasPhoto) catPhotoInto(d.querySelector('.ph'), c.id, c.ph);
     const fb = d.querySelector('[data-fix]'); if (fb) fb.onclick = () => startFix(c);
     if (c.state === '登録済み') { d.classList.add('lcard'); d.onclick = () => openCat(c.id); }
     box.appendChild(d);
@@ -537,11 +584,12 @@ function seeErr(r, box) {   // 一覧・詳しい画面の誤り。管理者の�
 }
 async function loadCats() {
   show($('#l-err'), ''); setHeader('猫の一覧', auth.type === 'google' ? '管理者' : auth.role === 'hospital' ? '病院' : (auth.nick || ''), true);
-  const r = await api('catList');
-  if (!r.ok) return seeErr(r, $('#l-err'));
+  await fresh('cats', h => api('catList', h), drawCats, r => seeErr(r, $('#l-err')));
+}
+function drawCats(r) {
   $('#l-line').innerHTML = isUser() ? (canAdopt() ? `いま手を挙げている猫: <b>${r.raising}頭</b> ・ 見える猫 ${r.cats.length}頭` : `見える猫 ${r.cats.length}頭`)
     : `${auth.type === 'google' ? '登録済みの猫(全部)' : 'この病院の登録済みの猫'}: <b>${r.cats.length}頭</b>`;
-  photoUrls.forEach(u => URL.revokeObjectURL(u)); photoUrls = [];
+  photoUrls.forEach(u => URL.revokeObjectURL(u)); photoUrls = []; if (photoSeen) photoSeen.disconnect();
   const box = $('#l-cats'); box.innerHTML = '';
   if (!r.cats.length) box.innerHTML = '<div class="card"><div class="note" style="margin:0">今は見られる猫がいません。</div></div>';
   r.cats.forEach(c => {
@@ -550,7 +598,7 @@ async function loadCats() {
     const btn = c.own || !canAdopt() ? '' : c.mine ? '<button class="btn sm sub" type="button" data-q="lower">手を下ろす</button>' : '<button class="btn sm" type="button" data-q="raise">手を挙げる</button>';
     d.innerHTML = `<div class="cat"><div class="ph">🐱</div><div class="grow"><div class="big">${esc(c.name)}</div><div class="note" style="margin:0">${esc(catSub(c))}</div><div class="note" style="margin:0">${esc(hosText(c.hospital))}</div></div></div>`
       + `<div class="row"><div class="grow"><span class="tag" data-raised="${c.raised}">手を挙げた人 ${c.raised}人</span>${tag}${c.wide ? '<span class="tag">ほかの病院にも見せる</span>' : ''}${c.seeking ? SEEK_TAG : ''}</div>${btn}</div>`;
-    if (c.hasPhoto) catPhotoInto(d.querySelector('.ph'), c.id);
+    if (c.hasPhoto) lazyPhoto(d.querySelector('.ph'), c.id, c.ph);
     d.onclick = ev => { if (!ev.target.closest('button')) openCat(c.id); };
     const qb = d.querySelector('[data-q]'); if (qb) qb.onclick = () => busy(qb, async () => {
       const up = qb.dataset.q === 'raise';
@@ -575,7 +623,7 @@ async function loadCat() {
   if (c.state !== '登録済み') tg.push(['r', STATE_TAG[c.state] ? STATE_TAG[c.state][1] : c.state]);
   if (c.seeking) tg.push(['r', '引き継ぎ先を探しています']);
   $('#d-tags').innerHTML = tg.map(([k, t]) => `<span class="tag ${k}">${esc(t)}</span>`).join('');
-  const ph = $('#d-head .ph'); ph.innerHTML = '🐱'; if (c.hasPhoto) catPhotoInto(ph, c.id);
+  const ph = $('#d-head .ph'); ph.innerHTML = '🐱'; if (c.hasPhoto) catPhotoInto(ph, c.id, c.ph);
   $('#d-info').innerHTML = [['性格', c.nature || '—'], ['持病', c.illness || '—'], ['病院', hosText(c.hospital)]].concat(c.ownerNick != null ? [['飼い主', c.ownerNick]] : []).map(([k, v]) => `${k}: ${esc(v)}`).join('<br>');
   if (c.own) {   // 見える範囲: 飼い主だけが変えられる
     $('#d-scope').classList.remove('hidden');
@@ -665,11 +713,13 @@ function msgCard(m) {
 }
 async function loadMsgs() {
   setHeader('メッセージ', auth.role === 'hospital' ? '病院' : (auth.nick || ''), true); show($('#m-err'), '');
-  const r = await api('msgList'); if (!r.ok) return seeErr(r, $('#m-err'));
+  const r = await fresh('msgs', h => api('msgList', h), drawMsgs, x => seeErr(x, $('#m-err'))); if (!r) return;
+  if (r.unread) { await api('msgRead'); } setBadge(0);
+}
+function drawMsgs(r) {
   const box = $('#m-list'); box.innerHTML = '';
   if (!r.msgs.length) box.innerHTML = '<div class="card"><div class="note" style="margin:0">まだメッセージはありません。</div></div>';
   r.msgs.forEach(m => box.appendChild(msgCard(m)));
-  if (r.unread) { await api('msgRead'); } setBadge(0);
 }
 $('#d-raise').onclick = () => busy($('#d-raise'), async () => { const r = await api('queueRaise', { catId: openId }); if (!r.ok && r.error !== 'already_raised') return show($('#d-err'), errText(r)); loadCat(); });
 $('#d-lower').onclick = () => busy($('#d-lower'), async () => {
@@ -679,8 +729,8 @@ async function loadSettings() {
   setHeader('設定', auth.nick || '', true); show($('#s-err'), ''); show($('#s-ok'), '');
   $('#s-marks').classList.toggle('hidden', auth.wants === 'owner');   // 飼い主だけの人は、印の欄を出さない(ログアウトだけ)
   if (auth.wants === 'owner') return;
-  const r = await api('userHome'); if (!r.ok) return seeErr(r, $('#s-err'));
-  const m = r.marks || { foster: false, life: false }; $('#s-foster').checked = m.foster; $('#s-life').checked = m.life;
+  const draw = r => { const m = r.marks || { foster: false, life: false }; $('#s-foster').checked = m.foster; $('#s-life').checked = m.life; };
+  await fresh('home', h => api('userHome', h), draw, r => seeErr(r, $('#s-err')));
 }
 $('#s-go').onclick = () => busy($('#s-go'), async () => {
   show($('#s-ok'), '');
