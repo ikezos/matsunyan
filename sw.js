@@ -1,7 +1,7 @@
 // まつにゃん: 電波の弱い所でも画面を開けるようにする控え。
 // 版の4つ(この VER・app.js の APP_VER・index.html の meta app-ver・?v=)は必ず同じ数にする。
 // 画面と設定は毎回サーバーに確かめ、3秒で返らなければ控えを出す。「?v=版」付きの物は版の組で控える。
-const VER = 7, CACHE = 'matsunyan-v' + VER, NET_WAIT_MS = 3000;
+const VER = 11, CACHE = 'matsunyan-v' + VER, NET_WAIT_MS = 3000;
 const PLAIN = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './help.html', './terms.html'];
 const PAIRED = ['./app.js', './config.js', './style.css', './lib/qr.js'].map(f => f + '?v=' + VER);
 const FILES = PLAIN.concat(PAIRED);

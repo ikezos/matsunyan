@@ -1,4 +1,4 @@
-/* まつにゃん v7。色と形は見本(20261029-0050-matsunyan-mock/gen/build.py)のまま */
+/* まつにゃん v11。色と形は見本(20261029-0050-matsunyan-mock/gen/build.py)のまま */
 :root { --bg: #fbf3e6; --main: #a8461f; --sos: #c4161c; --ink: #2b2118; --sub: #5e4e3d; --line: #e3d3bd; --field: #cdb99d; --codebg: #fff3df; --navink: #6b5a48; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); font-family: "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif; color: var(--ink); font-size: 17px; }
@@ -16,7 +16,7 @@ nav button.on { color: var(--main); font-weight: bold; border-top: 4px solid var
 .card { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px #0003; }
 .card.center { text-align: center; }
 h3 { font-size: 17px; margin: 2px 0 8px; }
-.note { font-size: 14px; color: var(--sub); margin: 4px 0; }
+.note { font-size: 15px; color: var(--sub); margin: 4px 0; }
 .btn { display: block; width: 100%; min-height: 56px; border-radius: 12px; border: 0; background: var(--main); color: #fff; font-size: 19px; font-weight: bold; text-align: center; margin: 8px 0; font-family: inherit; cursor: pointer; }
 .btn.sub { background: #fff; color: var(--main); border: 2px solid var(--main); }
 .btn.sm { min-height: 46px; font-size: 16px; width: auto; display: inline-block; padding: 0 14px; margin: 4px 4px 4px 0; }
@@ -28,7 +28,7 @@ label.check { font-weight: normal; display: flex; gap: 10px; align-items: center
 label.check input { width: 26px; height: 26px; }
 .row { display: flex; gap: 10px; align-items: center; }
 .row .grow { flex: 1; min-width: 0; }
-.tag { display: inline-block; font-size: 13px; font-weight: bold; border-radius: 10px; padding: 2px 8px; background: #f6e3c4; color: #7a3a10; margin: 2px 2px 2px 0; }
+.tag { display: inline-block; font-size: 14px; font-weight: bold; border-radius: 10px; padding: 2px 8px; background: #f6e3c4; color: #7a3a10; margin: 2px 2px 2px 0; }
 .tag.g { background: #dcebd6; color: #2d5a22; } .tag.r { background: #fbd9d9; color: #8a1015; }
 .code { font-family: "DejaVu Sans Mono", monospace; font-size: 40px; letter-spacing: .1em; white-space: nowrap; text-align: center; color: var(--main); font-weight: bold; padding: 10px 0; background: var(--codebg); border-radius: 12px; border: 3px dashed var(--main); margin: 6px 0; }
 .big { font-size: 20px; font-weight: bold; }
@@ -45,6 +45,7 @@ hr { border: 0; border-top: 1px solid #eadcc6; margin: 8px 0; }
 .choice { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
 .choice label { font-weight: normal; border: 2px solid var(--field); border-radius: 10px; padding: 8px 10px; background: #fff; display: flex; gap: 6px; align-items: center; }
 .choice label:has(input:checked) { border-color: var(--main); color: var(--main); font-weight: bold; background: var(--codebg); }
+.choice label.on { border-color: var(--main); color: var(--main); font-weight: bold; background: var(--codebg); }   /* S-11: :has の効かない古い iPhone 用(別の行にする。1つの行にまとめると、古い方では行ごと捨てられる) */
 .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
 .phrow { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
 .ph { width: 82px; height: 82px; border-radius: 12px; background: #e8d5b8; display: flex; align-items: center; justify-content: center; font-size: 40px; overflow: hidden; flex: none; cursor: pointer; }
@@ -93,3 +94,41 @@ header a.helpln { color: #fff; text-decoration: none; border: 1px solid #fff8; b
 .doc .fig { border: 2px dashed var(--field); border-radius: 10px; background: var(--codebg); color: var(--sub); font-size: 13px; text-align: center; padding: 8px; margin: 6px 0; }
 .doc .sosnote { color: var(--sos); font-weight: bold; }
 .doc a { color: var(--main); }
+/* 入口の2つのボタン(7枚目)。高齢の方が押しやすい大きさ。色は見本の赤茶とクリーム */
+.door { display: block; width: 100%; min-height: 76px; border-radius: 16px; border: 0; background: var(--main); color: #fff; font-size: 24px; font-weight: bold; text-align: center; margin: 10px 0; padding: 12px 8px; font-family: inherit; cursor: pointer; box-shadow: 0 3px 0 #6e2c12; }
+.door small { display: block; font-size: 15px; font-weight: normal; margin-top: 4px; }
+.door.sub { background: var(--codebg); color: var(--main); border: 3px solid var(--main); box-shadow: none; }
+.door.on { box-shadow: none; transform: translateY(2px); }
+ol.first { margin: 0; padding-left: 1.4em; font-size: 18px; line-height: 1.6; }
+.adminfoot { margin: 34px 0 10px; padding-top: 10px; border-top: 1px solid var(--line); text-align: center; font-size: 13px; }
+.adminfoot #gsi-btn { display: flex; justify-content: center; }
+.card.out { margin-top: 26px; }
+/* 8枚目: カードの印刷(名刺の大きさ 91×55mm)。病院のカードと利用者のカードで同じ形。A4 に1枚(切り取り線)か名刺用紙10面の1か所 */
+.handoff { background: #fff3df; border: 3px solid var(--main); border-radius: 12px; padding: 10px 12px; margin: 10px 0; font-size: 16px; text-align: center; }
+.pc-preview { display: flex; justify-content: center; margin: 10px 0; }
+.pc-preview .pc-card { position: relative; box-shadow: 0 1px 4px #0004; }
+.pc-card { position: absolute; width: 91mm; height: 55mm; background: #fff3df; color: #2b2118; overflow: hidden; font-family: "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.pc-top { height: 10mm; background: #a8461f; color: #fff; display: flex; align-items: center; gap: 2mm; padding: 0 3mm; font-size: 4.4mm; font-weight: bold; }
+.pc-top img { width: 6.5mm; height: 6.5mm; border-radius: 1.3mm; background: #fff3df; }
+.pc-top small { margin-left: auto; font-size: 2.7mm; font-weight: normal; }
+.pc-body { display: flex; gap: 3mm; padding: 2.2mm 3mm 0; }
+.pc-left { flex: 1; min-width: 0; }
+.pc-name { font-size: 4.8mm; font-weight: bold; line-height: 1.3; word-break: break-all; }
+.pc-sub { font-size: 2.9mm; color: #5e4e3d; margin-top: 1.6mm; line-height: 1.4; word-break: break-all; }
+.pc-qr { width: 30mm; height: 30mm; flex: none; image-rendering: pixelated; background: #fff; }
+.pc-foot { position: absolute; left: 3mm; right: 3mm; bottom: 1.8mm; font-size: 2.4mm; line-height: 1.35; border-top: .3mm solid #a8461f; padding-top: .9mm; }
+.pc-card.cutline { outline: .3mm dashed #777; }
+.pc-cutnote { position: absolute; font-size: 3.2mm; color: #555; }
+#print-sheet { display: none; }
+@page cardsheet { size: A4 portrait; margin: 0; }
+@media print {
+  body.pc-printing > *:not(#print-sheet) { display: none !important; }
+  body.pc-printing { background: #fff; display: block; min-height: 0; }
+  body.pc-printing #print-sheet { display: block; page: cardsheet; }
+  #print-sheet .sheet { position: relative; width: 210mm; height: 296mm; overflow: hidden; }
+}
+/* 10b(U-15): 「印刷の番号」は、今日の確認の番号(赤茶の点線)と見分けるため、枠を緑(印 .tag.g と同じ色)の実線にする */
+.takebox { border: 3px solid #2d5a22; }
+.code.pcode { color: #2d5a22; border: 3px solid #2d5a22; }
+.field.pcodein { border: 3px solid #2d5a22; }
+details > summary { cursor: pointer; }

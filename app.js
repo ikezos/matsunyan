@@ -4,12 +4,14 @@
 //              3枚目の後半: アプリの中のメッセージ・急がないボタン・登録の「約束ではない」の文と同意・年1回の確認
 //              4枚目: 緊急ボタンと確かめ・管理者の「電話が必要な連絡」と「連絡済み」・病院の「引き受ける/断った」と「引き継ぎ済み」
 //              5枚目の前半: 手を挙げた人から病院への返事・電話の形の判定を絞る・緊急のメールの送り直し・つかい方と利用のきまりのページ
-//              6枚目: 病院で利用者のカードを作り直す(暗証番号を忘れた・カードをなくした))
+//              6枚目: 病院で利用者のカードを作り直す(暗証番号を忘れた・カードをなくした)
+//              10枚目: 登録をやめる/戻す・この猫を外す・止めた病院の知らせ・「断った」は緊急の中だけ知らせる
+//              11版(10b): 見直しの画面と文の直し(暗証番号のたしかめ・印刷の番号をホームにも・Google の部品は管理者が押した時だけ・「あとで」は1日出さない ほか)
 // 受け付けは Apps Script(text/plain の JSON を POST)。ログインはログインカード(合言葉の QR + 4けた)と、管理者の Google。
 'use strict';
-const APP_VER = 7;
+const APP_VER = 11;
 const CFG = window.MATSUNYAN_CONFIG || {};
-const AUTH_KEY = 'matsunyan.auth', DEV_KEY = 'matsunyan.dev';
+const AUTH_KEY = 'matsunyan.auth', DEV_KEY = 'matsunyan.dev', ADMIN_SEEN = 'matsunyan.adminSeen', RENEW_LATER = 'matsunyan.renewLater', HAND_KEY = 'matsunyan.hand';
 const $ = s => document.querySelector(s);
 const ERR = {
   card_not_found: 'このカードは使えません。病院か管理者に聞いてください。', wrong_pin: '暗証番号がちがいます。', bad_pin: '暗証番号は4けたの数字です。',
@@ -29,10 +31,13 @@ const ERR = {
   sos_not_found: 'この連絡は見つかりません。', not_head: '順番が変わりました。画面を開き直してください。', queue_empty: '順番が尽きました(手を挙げた人がいません)。', already_accepted: 'もう「引き受ける」を記録しています。',
   not_accepted: '先に、先頭の人の「引き受ける」を記録してください。', not_hospital: 'この操作は病院のカードで使います。',
   person_not_found: 'この人は見つかりません(この病院で登録した人だけ作り直せます)。', need_here: '「本人がここにいることを確かめた」にチェックを入れてください。',
+  bad_handoff: '番号は6けたの数字です。利用者のスマホに出ている番号を入れてください。', handoff_invalid: 'この番号ではカードを受け取れません。番号を確かめてください(15分すぎた・もう印刷した時は、カードの作り直しから)。',
   reissue_invalid: 'この QR はもう使えません(15分すぎたか、もう使いました)。病院でもう一度作ってもらってください。', pin_mismatch: '2つの暗証番号がちがいます。',
-  token_expired: 'もう一度 Google でログインしてください。', invalid_token: 'もう一度 Google でログインしてください。', network: '通信できませんでした。電波を確かめてもう一度。',
+  card_quit: 'このカードは登録をやめています。戻したい時は、病院に伝えてください。', already_quit: 'この人はもう登録をやめています。', not_quit: 'この人は登録をやめていません。',
+  restore_expired: 'やめてから日数がたったので、戻せません。もう一度、登録から始めてください。', hospital_stopped_user: 'かかりつけの病院は今は使えません。ほかの病院で登録し直してください。',
+  server_error: 'うまくいきませんでした。少し待ってから、もう一度。', token_expired: 'もう一度 Google でログインしてください。', invalid_token: 'もう一度 Google でログインしてください。', network: '通信できませんでした。電波を確かめてもう一度。',
 };
-const errText = r => r.error === 'too_many' ? '確認の番号を試せる回数をこえました。' + (r.waitMin || 60) + '分ほど待ってから、もう一度。' :
+const errText = r => r.error === 'hospital_stopped' && auth && auth.role === 'user' ? ERR.hospital_stopped_user : r.error === 'too_many' ? '確認の番号を試せる回数をこえました。' + (r.waitMin || 60) + '分ほど待ってから、もう一度。' :
   (ERR[r.error] || ('うまくいきませんでした(' + (r.error || '不明') + ')')) + (r.error === 'wrong_pin' && r.remaining != null ? ' あと' + r.remaining + '回まちがえると止まります。' : '') + (r.error === 'wrong_code' && r.remaining != null ? '(あと' + r.remaining + '回)' : '');
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 let auth = null;
@@ -61,7 +66,7 @@ const NAVS = {
   admin: [['admin-sos', '🏠', '連絡'], ['admin-list', '🏥', '病院の一覧'], ['admin-add', '➕', '病院を登録'], ['cats', '🐈', '猫の一覧']],
   hospital: [['hos-home', '🏠', 'ホーム'], ['cats', '🐈', '猫の一覧'], ['msgs', '💬', 'メッセージ'], ['hos-qr', '🔳', '病院のQR']],
   user: [['u-home', '🏠', 'ホーム'], ['u-cat', '➕', '猫を登録'], ['cats', '🐈', '猫の一覧'], ['msgs', '💬', 'メッセージ'], ['u-set', '⚙️', '設定']],   // 両方
-  userO: [['u-home', '🏠', 'ホーム'], ['u-cat', '➕', '猫を登録'], ['cats', '🐈', '猫の一覧'], ['msgs', '💬', 'メッセージ']],   // 飼い主だけ
+  userO: [['u-home', '🏠', 'ホーム'], ['u-cat', '➕', '猫を登録'], ['cats', '🐈', '猫の一覧'], ['msgs', '💬', 'メッセージ'], ['u-set', '⚙️', '設定']],   // 飼い主だけ(7枚目: ログアウトを設定に置いたので、設定を足した)
   userA: [['u-home', '🏠', 'ホーム'], ['cats', '🐈', '猫の一覧'], ['msgs', '💬', 'メッセージ'], ['u-set', '⚙️', '設定']],   // 引き取ってもよい人だけ
 };
 const navOf = w => w === 'adopter' ? 'userA' : w === 'owner' ? 'userO' : 'user';
@@ -75,6 +80,7 @@ function view(id) {
   if (id === 'hos-home') loadHospitalHome();
   if (id === 'hos-qr') drawHospitalQr();
   if (id === 'hos-users') loadHosUsers();
+  if (id !== 'hos-take') clearTake();   // 受け取ったカードは、この画面を離れたら消す(もう一度は出せない)
   if (id === 'u-home') loadUserHome();
   if (id === 'cats') loadCats();
   if (id === 'u-set') loadSettings();
@@ -88,14 +94,22 @@ function setNav(kind) {
 }
 // 新しいメッセージの数を、下の帯の「メッセージ」に出す
 function setBadge(n) { const b = document.querySelector('#nav button[data-v="msgs"]'); if (!b) return; let e = b.querySelector('.badge'); if (!n) { if (e) e.remove(); return; } if (!e) { e = document.createElement('span'); e.className = 'badge'; b.appendChild(e); } e.textContent = n; }
-function setHeader(title, who, canLogout) { $('#title').textContent = title; $('#who').textContent = who || ''; $('#logout').classList.toggle('hidden', !canLogout); }
+// 上の帯のログアウトは管理者(Google)だけ。カードの人は、設定(病院はホームの下)の奥に置く(7枚目: 一度入ったスマホは入ったままにする)
+function setHeader(title, who, canLogout) { $('#title').textContent = title; $('#who').textContent = who || ''; $('#logout').classList.toggle('hidden', !canLogout || !auth || auth.type !== 'google'); }
 
 function goLogin(msg) {
   setNav(''); setHeader('まつにゃん', 'ログイン前', false); view('login');
   const card = pendingCard || cardFromHash();
   $('#card-ready').classList.toggle('hidden', !card); $('#card-paste').classList.toggle('hidden', !!card);
-  show($('#card-err'), msg || ''); initGoogle();
+  show($('#card-err'), msg || ''); openDoor(card || msg ? 'card' : ''); if (localStorage.getItem(ADMIN_SEEN)) initGoogle();
 }
+// 入口は2つ(7枚目): 「カードで入る」と「はじめての方へ」。押した方だけ開く。カードを読んだ時・断られた時は、カードの方を開いておく
+function openDoor(which) {
+  [['card', '#go-card', '#card-box'], ['first', '#go-first', '#first-box']].forEach(([k, b, box]) => {
+    const on = which === k; $(box).classList.toggle('hidden', !on); $(b).classList.toggle('on', on); $(b).setAttribute('aria-expanded', on ? 'true' : 'false'); });
+}
+$('#go-card').onclick = () => openDoor($('#card-box').classList.contains('hidden') ? 'card' : '');
+$('#go-first').onclick = () => openDoor($('#first-box').classList.contains('hidden') ? 'first' : '');
 function goAdmin() { setNav('admin'); setHeader('管理者', '管理者', true); fillWards(); view('admin-sos'); }
 function goHospital() { setNav('hospital'); setHeader((auth.hospital && auth.hospital.name) || '病院', '病院', true); view('hos-home'); }
 
@@ -120,23 +134,25 @@ async function routeCard() {
   auth.role = w.role; auth.hospital = w.hospital; saveAuth(auth);
   if (w.role === 'hospital') return goHospital();
   auth.nick = w.nick; auth.renew = w.renew || null; if (w.wants) auth.wants = w.wants; saveAuth(auth);
-  if (w.renew && w.renew.due && !sessionStorage.getItem('matsunyan.renewLater')) return goRenew();   // 年1回の「登録を続けますか」
+  if (w.renew && w.renew.due && localStorage.getItem(RENEW_LATER) !== today()) return goRenew();   // 年1回の「登録を続けますか」
   return goUser();
 }
 /* ---- 年1回の確認 ---- */
-function renewText(r) { return r.lapsed ? `登録から1年たち、確認が無いまま30日すぎたので、手を挙げた印を今は止めています(消してはいません)。「続ける」を押すと元に戻ります。`
+function renewText(r) { return r.lapsed ? `年に1回の確認が無いまま、確認が無いまま30日すぎたので、手を挙げた印を今は止めています(消してはいません)。「続ける」を押すと元に戻ります。`
   : `登録(または前の確認)から1年たちました。${r.stopDay} までに確認が無いと、手を挙げた印を止めます(消しません)。`; }
 function goRenew() {
-  setNav(navOf(auth.wants)); setHeader('登録の確認', auth.nick || '', true); view('renew');
+  setNav(navOf(auth.wants)); setHeader('年に1回の確認', auth.nick || '', true); view('renew');
   $('#rn-txt').textContent = renewText(auth.renew || {}); $('#rn-promise').classList.toggle('hidden', auth.wants === 'owner'); show($('#rn-err'), '');
 }
 $('#rn-go').onclick = () => busy($('#rn-go'), async () => {
   const r = await api('userRenew'); if (!r.ok) return show($('#rn-err'), errText(r));
-  auth.renew = r.renew; saveAuth(auth); sessionStorage.removeItem('matsunyan.renewLater'); goUser();
+  auth.renew = r.renew; saveAuth(auth); localStorage.removeItem(RENEW_LATER); goUser();
 });
-$('#rn-later').onclick = () => { sessionStorage.setItem('matsunyan.renewLater', '1'); goUser(); };
+$('#rn-later').onclick = () => { localStorage.setItem(RENEW_LATER, today()); goUser(); };
+function today() { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
 function goUser() { setNav(navOf(auth.wants)); setHeader('まつにゃん', auth.nick || '', true); view('u-home'); }
 let gsiReady = false;
+$('#go-admin').onclick = () => initGoogle();   // S-12: 入口で全員が Google の部品を読まない
 function initGoogle() {
   if (gsiReady || !CFG.GOOGLE_CLIENT_ID) return;
   const start = () => { if (!window.google || !google.accounts) return; gsiReady = true;
@@ -151,14 +167,15 @@ async function onGoogle(resp) {
   saveAuth({ type: 'google', idToken: t, exp });
   const w = await api('whoami');
   if (!w.ok || w.role !== 'admin') { saveAuth(null); goLogin(); return show($('#admin-err'), errText(w.ok ? { error: 'not_admin' } : w)); }
-  goAdmin();
+  localStorage.setItem(ADMIN_SEEN, '1'); goAdmin();
 }
-$('#logout').onclick = async () => {
-  if (!confirm('ログアウトしますか?')) return;
+async function logout() {
+  if (!confirm(auth && auth.type === 'card' ? 'ログアウトしますか?\n次に入る時は、カードと暗証番号が要るようになります。' : 'ログアウトしますか?')) return;
   if (auth && auth.type === 'card') await api('logout');
   if (auth && auth.type === 'google' && window.google && google.accounts) google.accounts.id.disableAutoSelect();
-  saveAuth(null); goLogin();
-};
+  saveAuth(null); sessionStorage.removeItem(HAND_KEY); goLogin();
+}
+$('#logout').onclick = logout; $('#s-logout').onclick = logout; $('#hos-logout').onclick = logout;
 function adminExpired(r) { if (['token_expired', 'invalid_token', 'bad_token', 'not_admin'].includes(r.error)) { saveAuth(null); goLogin(); show($('#admin-err'), errText(r)); return true; } return false; }
 
 /* ---- 管理者: 病院 ---- */
@@ -224,9 +241,10 @@ function showCard(name, card) {
   $('#add-form').classList.add('hidden'); $('#card-out').classList.remove('hidden');
   $('#card-out-name').textContent = name; $('#card-out-url').textContent = url;
   QR.draw($('#card-qr'), url, { ecl: 'M', scale: 6 });
+  fillLayout($('#card-layout')); printing = { kind: 'hospital', name, sub: '病院の人が入るためのカード', url };
 }
-$('#card-print').onclick = () => window.print();
-$('#card-done').onclick = () => { $('#card-out').classList.add('hidden'); $('#add-form').classList.remove('hidden'); $('#card-qr').width = 0; $('#card-out-url').textContent = ''; view('admin-list'); };
+$('#card-print').onclick = () => printCard(printing, $('#card-layout').value);
+$('#card-done').onclick = () => { printing = null; $('#card-out').classList.add('hidden'); $('#add-form').classList.remove('hidden'); $('#card-qr').width = 0; $('#card-out-url').textContent = ''; view('admin-list'); };
 
 /* ---- 病院 ---- */
 async function loadHospitalHome() {
@@ -240,6 +258,7 @@ async function loadHospitalHome() {
   $('#title').textContent = r.hospital.name;
   $('#hos-counts').textContent = `登録した猫 ${r.counts.cats}頭 ・ 登録した人 ${r.counts.people}人`;
   $('#hos-pend-n').textContent = r.pending.length + '件';
+  $('#hos-take-box').classList.toggle('hidden', !r.cardTake);   // 8枚目の受け付けの時だけ出す(前の受け付けでは出さない)
   setBadge(r.unread);
   $('#hos-sos').onclick = () => r.sosCats.length ? openSos(r.sosCats, r.hospital.name) : show($('#hos-err'), '登録済みの猫がいないので、緊急ボタンは使えません。');
   $('#hos-renew').textContent = `登録の確認待ちの人 ${r.renewWaiting}人(1年たって、まだ「続ける」を押していない人)`;
@@ -270,29 +289,51 @@ $('#hos-users-go').onclick = () => view('hos-users');
 $('#hu-search').onclick = () => loadHosUsers();
 $('#hu-q').onkeydown = e => { if (e.key === 'Enter') loadHosUsers(); };
 async function loadHosUsers() {
-  show($('#hu-err'), ''); setHeader('カードを作り直す', '病院', true);
+  show($('#hu-err'), ''); setHeader('カードを作り直す・やめる', '病院', true);
   const q = $('#hu-q').value.trim(), r = await api('hospitalUserList', { q });
   if (!r.ok) return show($('#hu-err'), errText(r));
+  hasQuit = !!r.purgeDays; if (hasQuit) document.querySelectorAll('.hr-days').forEach(e => { e.textContent = r.purgeDays; });   // 10枚目の受け付けの時だけ「登録をやめる」を出す
   $('#hu-count').textContent = (q ? `「${q}」で ${r.people.length}人` : `${r.people.length}人`) + ` ・ この病院の利用者 ${r.total}人` + (r.more ? '(多いので呼び名で絞ってください)' : '');
   const box = $('#hu-list'); box.innerHTML = '';
   if (!r.people.length) box.innerHTML = '<div class="card"><div class="note" style="margin:0">見つかりません。</div></div>';
   r.people.forEach(p => {
     const d = document.createElement('div'); d.className = 'card lcard'; d.dataset.person = p.id;
     d.innerHTML = `<div class="row"><div class="grow"><span class="big">${esc(p.nick)}</span> <span class="note">${esc({ owner: '飼い主', adopter: '引き取ってもよい人', both: '両方' }[p.wants])}</span>`
-      + `<div class="note" style="margin:2px 0 0">登録 ${esc(p.createdAt)}${p.lastUsed ? ' ・ 最後に使った日 ' + esc(p.lastUsed) : ''}${p.reissuedAt ? ' ・ 作り直し ' + esc(p.reissuedAt) : ''}</div></div>`
-      + `<span class="tag ${p.state === '使える' ? 'g' : 'r'}">${esc(p.state === '使える' ? 'カード使える' : 'カード止まっている')}</span></div>`;
+      + `<div class="note" style="margin:2px 0 0">登録 ${esc(p.createdAt)}${p.lastUsed ? ' ・ 最後に使った日 ' + esc(p.lastUsed) : ''}${p.reissuedAt ? ' ・ 作り直し ' + esc(p.reissuedAt) : ''}${p.cats && p.cats.length ? ' ・ 猫: ' + esc(p.cats.join('、')) : ''}</div></div>`
+      + (p.quit ? `<span class="tag r">やめた${p.canRestore ? '(' + esc(p.purgeDay) + 'まで戻せる)' : ''}</span>` : `<span class="tag ${p.state === '使える' ? 'g' : 'r'}">${esc(p.state === '使える' ? 'カード使える' : 'カード止まっている')}</span>`) + '</div>';
     d.onclick = () => openReissue(p);
     box.appendChild(d);
   });
 }
-let reissueReq = rid();
+let reissueReq = rid(), hasQuit = false;
+const WANTS_TEXT = { owner: '飼い主', adopter: '引き取ってもよい人', both: '両方' };
+const whoText = p => `${p.nick} さん(登録 ${p.createdAt} ・ ${WANTS_TEXT[p.wants] || ''}${p.cats && p.cats.length ? ' ・ 猫: ' + p.cats.join('、') : ''})`;   // S-13: 取り違えを防ぐ
 function openReissue(p) {
-  view('hos-reissue'); reissueReq = rid();
-  $('#hr-ask').classList.remove('hidden'); $('#hr-out').classList.add('hidden'); $('#hr-here').checked = false; show($('#hr-err'), '');
-  $('#hr-nick').textContent = p.nick; $('#hr-meta').textContent = '登録 ' + p.createdAt + ' ・ ' + p.state;
+  view('hos-reissue'); reissueReq = rid(); const quitReq = rid();
+  show($('#hr-err2'), ''); show($('#hr-ok2'), ''); $('#hr-out').classList.add('hidden');
+  $('#hr-ask').classList.toggle('hidden', !!p.quit); $('#hr-quit').classList.toggle('hidden', !!p.quit || !hasQuit); $('#hr-restore').classList.toggle('hidden', !p.quit);
+  if (p.quit) {   // 10枚目: やめた人は「戻す」だけ(30日の内)
+    $('#hr-r-nick').textContent = p.nick; $('#hr-r-meta').textContent = p.canRestore ? `やめた日 ${p.quitAt} ・ ${p.purgeDay} までなら戻せます。戻すと、前のカードと暗証番号でまた入れます(手を挙げた所は戻りません)。` : '戻せる日を過ぎました。';
+    $('#hr-restore-go').classList.toggle('hidden', !p.canRestore);
+    $('#hr-restore-go').onclick = () => busy($('#hr-restore-go'), async () => {
+      if (!confirm(whoText(p) + '\nの登録を戻しますか?')) return;
+      const r = await api('hospitalUserRestore', { reqId: quitReq, personId: p.id });
+      if (!r.ok) return show($('#hr-err2'), errText(r));
+      $('#hr-restore').classList.add('hidden'); show($('#hr-ok2'), p.nick + ' さんの登録を戻しました。前のカードでまた入れます。');
+    });
+    $('#hr-r-back').onclick = () => { view('hos-users'); loadHosUsers(); };
+    return;
+  }
+  $('#hr-quit-go').onclick = () => busy($('#hr-quit-go'), async () => {
+    if (!confirm(whoText(p) + '\nの登録をやめますか?\nカードはすぐに使えなくなり、猫は一覧から消えます。' + (Number($('.hr-days').textContent) || 30) + '日の内なら戻せます。')) return;
+    const r = await api('hospitalUserQuit', { reqId: quitReq, personId: p.id });
+    if (!r.ok) return show($('#hr-err2'), errText(r));
+    $('#hr-ask').classList.add('hidden'); $('#hr-quit').classList.add('hidden'); show($('#hr-ok2'), `${p.nick} さんの登録をやめました。${r.purgeDay} までなら、この画面から戻せます。`);
+  });
+  $('#hr-here').checked = false; show($('#hr-err'), ''); $('#hr-who').textContent = whoText(p);
+  $('#hr-nick').textContent = p.nick; $('#hr-meta').textContent = '登録 ' + p.createdAt + ' ・ ' + (WANTS_TEXT[p.wants] || '') + (p.cats && p.cats.length ? ' ・ 猫: ' + p.cats.join('、') : '') + ' ・ ' + p.state;
   $('#hr-go').onclick = () => busy($('#hr-go'), async () => {
     if (!$('#hr-here').checked) return show($('#hr-err'), ERR.need_here);
-    if (!confirm(p.nick + ' さんのカードを作り直しますか?\n前のカードはすぐに使えなくなります。')) return;
     const r = await api('hospitalReissueStart', { reqId: reissueReq, personId: p.id, here: true });
     if (!r.ok) { if (r.error !== 'network') reissueReq = rid(); return show($('#hr-err'), errText(r)); }
     $('#hr-ask').classList.add('hidden'); $('#hr-out').classList.remove('hidden');
@@ -302,6 +343,45 @@ function openReissue(p) {
 }
 $('#hr-back').onclick = () => view('hos-users');
 $('#hr-done').onclick = () => { $('#hr-qr').width = 0; view('hos-users'); };
+/* ---- 病院: 利用者のカードを受け取って印刷する(8枚目)。本人のスマホに出る6けたの番号で、1回だけ ---- */
+let takeReq = rid();
+$('#ht-go').onclick = () => busy($('#ht-go'), async () => {
+  const code = half($('#ht-code').value); show($('#ht-err'), '');
+  if (!/^[0-9]{6}$/.test(code)) return show($('#ht-err'), ERR.bad_handoff);
+  const r = await api('hospitalCardTake', { code, reqId: takeReq }); takeReq = rid();
+  if (!r.ok) return show($('#ht-err'), r.error === 'too_many' ? '番号を試せる回数をこえました。' + (r.waitMin || 60) + '分ほど待ってから、もう一度。' : errText(r) + (r.error === 'handoff_invalid' && r.remaining != null ? '(あと' + r.remaining + '回)' : ''));
+  $('#ht-code').value = '';
+  printing = { kind: 'user', name: r.nick + ' さん', sub: 'かかりつけ: ' + r.hospital.name, url: siteUrl() + '#card=' + r.card };
+  view('hos-take'); setHeader('カードを印刷', '病院', false);
+  $('#ht-nick').textContent = r.nick; $('#ht-preview').innerHTML = ''; $('#ht-preview').appendChild(cardEl(printing)); fillLayout($('#ht-layout'));
+});
+$('#ht-print').onclick = () => { if (printing) printCard(printing, $('#ht-layout').value); };
+$('#ht-done').onclick = () => view('hos-home');
+function clearTake() { if (printing && printing.kind === 'user' && $('#ht-preview').firstChild) printing = null; $('#ht-preview').innerHTML = ''; $('#ht-nick').textContent = ''; $('#print-sheet').innerHTML = ''; document.body.classList.remove('pc-printing'); }   // 印刷の紙の中身も消す(afterprint が来ない端末でも残さない)
+
+/* ---- カードの印刷(8枚目): 名刺の大きさ 91×55mm。A4 に1枚(切り取り線つき)か、名刺用紙10面(2列×5段)の1か所。病院のカードも利用者のカードも同じ形 ---- */
+let printing = null;   // 今の画面で印刷できるカード(画面を離れたら消す。localStorage には残さない)
+const CARD_FOOT = { user: 'スマホを替えた時に使います。なくさないでください。暗証番号は書きません', hospital: '端末を替えた時に使います。なくさないでください。暗証番号は書きません' };
+function cardEl(o) {
+  const d = document.createElement('div'); d.className = 'pc-card';
+  d.innerHTML = `<div class="pc-top"><img src="icon-192.png" alt="">まつにゃん<small>${o.kind === 'hospital' ? '病院のログインカード' : 'ログインカード'}</small></div>`
+    + '<div class="pc-body"><div class="pc-left"><div class="pc-name"></div><div class="pc-sub"></div></div><canvas class="pc-qr"></canvas></div><div class="pc-foot"></div>';
+  d.querySelector('.pc-name').textContent = o.name; d.querySelector('.pc-sub').textContent = o.sub; d.querySelector('.pc-foot').textContent = CARD_FOOT[o.kind];
+  QR.draw(d.querySelector('.pc-qr'), o.url, { ecl: 'M', scale: 8 });
+  return d;
+}
+function fillLayout(sel) { sel.innerHTML = '<option value="a4">A4 の紙に1枚(切り取り線つき)</option>' + Array.from({ length: 10 }, (_, i) => `<option value="m${i + 1}">名刺用紙(10面)の ${i + 1} 番目</option>`).join(''); sel.value = 'a4'; }
+function printCard(o, layout) {
+  if (!o) return;
+  const ps = $('#print-sheet'), sh = document.createElement('div'), c = cardEl(o); sh.className = 'sheet'; ps.innerHTML = '';
+  if (layout === 'a4') { c.classList.add('cutline'); c.style.left = '59.5mm'; c.style.top = '20mm';
+    const t = document.createElement('div'); t.className = 'pc-cutnote'; t.style.left = '59.5mm'; t.style.top = '78mm'; t.textContent = '✂ 点線にそって切ってください'; sh.appendChild(t); }
+  else { const k = (Number(String(layout).slice(1)) || 1) - 1; c.style.left = (14 + (k % 2) * 91) + 'mm'; c.style.top = (11 + Math.floor(k / 2) * 55) + 'mm'; }   // 名刺用紙: 左右14mm・上下11mm
+  sh.appendChild(c); ps.appendChild(sh); document.body.classList.add('pc-printing');
+  window.print();
+}
+window.addEventListener('afterprint', () => { if (!document.body.classList.contains('pc-printing')) return; document.body.classList.remove('pc-printing'); $('#print-sheet').innerHTML = ''; });
+
 /* ---- 作り直しの QR を読んだ人(本人のスマホ): 新しい暗証番号 → 新しいカード ---- */
 let reTicket = '', reFinishReq = rid();
 async function goReissue(t) {
@@ -340,22 +420,24 @@ async function goHospitalReg(id) {
 // 電話の形(受け付けの looksPhone_ と同じ決まり): 0 から始まる10〜11けた・+81 の形。「2026-11-03」「10歳」は通す
 const looksPhone = s => /(^|[^0-9+])(?:\+81[-\s]{0,3}(?:0[-\s]{0,3})?[1-9](?:[-\s]{0,3}[0-9]){8,9}|0(?:[-\s]{0,3}[0-9]){9,10})(?![0-9])/.test(String(s).replace(/[０-９]/g, c => String.fromCharCode(c.charCodeAt(0) - 0xFEE0)).replace(/[－‐―ー−]/g, '-').replace(/＋/g, '+').replace(/[()（）\s　]/g, ' '));
 $('#hreg-go').onclick = () => busy($('#hreg-go'), async () => {
-  const nick = $('#r-nick').value.trim(), code = half($('#r-code').value), pin = half($('#r-pin').value), w = document.querySelector('input[name=wants]:checked');
+  const nick = $('#r-nick').value.trim(), code = half($('#r-code').value), pin = half($('#r-pin').value), pin2 = half($('#r-pin2').value), w = document.querySelector('input[name=wants]:checked');
   if (!nick) return show($('#hreg-err'), ERR.bad_nick);
   if (/[@＠]/.test(nick) || looksPhone(nick)) return show($('#hreg-err'), ERR.nick_contact);   // 受け付けでも同じく断る
   if (!/^[0-9]{6}$/.test(code)) return show($('#hreg-err'), ERR.bad_code);
   if (!w) return show($('#hreg-err'), ERR.bad_wants);
   if (w.value !== 'owner' && !$('#r-agree').checked) return show($('#hreg-err'), ERR.need_agree);   // 受け付けでも断る
   if (!/^[0-9]{4}$/.test(pin)) return show($('#hreg-err'), ERR.bad_pin);
+  if (pin !== pin2) return show($('#hreg-err'), ERR.pin_mismatch);
   show($('#hreg-err'), '');
   const marks = w.value === 'owner' ? undefined : { foster: $('#r-foster').checked, life: $('#r-life').checked };
   const r = await api('userRegister', { hospitalId: regHospital, code, dev: device(), nick, wants: w.value, pin, reqId: regReq, marks, agree: w.value !== 'owner' ? true : undefined });
   if (!r.ok) { if (r.error !== 'network') regReq = rid(); return show($('#hreg-err'), errText(r)); }
-  regReq = rid(); $('#r-pin').value = ''; $('#r-code').value = '';
+  regReq = rid(); $('#r-pin').value = ''; $('#r-pin2').value = ''; $('#r-code').value = '';
   showUserCard(r);
 });
 // 選んだ役に合わせて、印の欄と「約束ではない」の文を出す(引き取ってもよい人・両方は同意のチェックが要る)
 document.querySelectorAll('input[name=wants]').forEach(i => { i.onchange = () => { if (!i.checked) return;
+  document.querySelectorAll('#r-wants label').forEach(l => l.classList.toggle('on', l.contains(i)));   // S-11: 古い iPhone でも選んだ所に色
   $('#r-marks').classList.toggle('hidden', i.value === 'owner'); $('#r-agree-box').classList.toggle('hidden', i.value === 'owner'); $('#r-owner-note').classList.toggle('hidden', i.value === 'adopter'); }; });
 function showUserCard(r) {
   const url = siteUrl() + '#card=' + r.card;
@@ -363,9 +445,18 @@ function showUserCard(r) {
   setHeader('登録できました', r.nick, false); view('ucard');
   $('#ucard-nick').textContent = r.nick + ' さんのカード'; $('#ucard-hos').textContent = 'かかりつけ: ' + r.hospital.name;
   $('#ucard-url').textContent = url; QR.draw($('#ucard-qr'), url, { ecl: 'M', scale: 6 });
+  // 8枚目: 受け付けが受け渡しの番号を返した時だけ「病院で印刷」を出す(前の受け付けでは出さない)
+  $('#ucard-hand').classList.toggle('hidden', !r.handoff); $('#ucard-hcode').textContent = r.handoff || ''; $('#ucard-hmin').textContent = r.handoffMin || 15;
+  if (r.handoff) sessionStorage.setItem(HAND_KEY, JSON.stringify({ code: r.handoff, until: Date.now() + (r.handoffMin || 15) * 60000 })); else sessionStorage.removeItem(HAND_KEY);
+  printing = { kind: 'user', name: r.nick + ' さん', sub: 'かかりつけ: ' + r.hospital.name, url };
 }
-$('#ucard-print').onclick = () => window.print();
-$('#ucard-go').onclick = () => { $('#ucard-qr').width = 0; $('#ucard-url').textContent = ''; goLogin(); };
+$('#ucard-print').onclick = () => printCard(printing, 'a4');
+$('#ucard-go').onclick = () => { printing = null; $('#ucard-hcode').textContent = ''; $('#ucard-qr').width = 0; $('#ucard-url').textContent = ''; $('#ucard-urlbox').open = false; goLogin(); };
+function showHand() {   // S-09: 先に「このカードで入る」を押しても、期限までは病院に見せられる
+  let h = null; try { h = JSON.parse(sessionStorage.getItem(HAND_KEY) || 'null'); } catch (e) { h = null; }
+  const left = h ? Math.ceil((h.until - Date.now()) / 60000) : 0; if (h && left <= 0) sessionStorage.removeItem(HAND_KEY);
+  $('#u-hand').classList.toggle('hidden', left <= 0); $('#u-hcode').textContent = left > 0 ? h.code : ''; $('#u-hmin').textContent = Math.max(left, 0);
+}
 
 /* ---- 利用者: ホーム・猫の登録 ---- */
 const SEEK_TAG = '<span class="tag r" data-seek="1">引き継ぎ先を探しています</span>';
@@ -385,6 +476,7 @@ async function loadUserHome() {
   if (auth.wants !== r.wants) { auth.wants = r.wants; saveAuth(auth); setNav(navOf(r.wants)); document.querySelectorAll('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === 'u-home')); }
   setHeader('まつにゃん', r.nick, true);
   $('#u-line').textContent = r.nick + ' さん ・ かかりつけ: ' + (r.hospital ? r.hospital.name : '');
+  $('#u-hstop').classList.toggle('hidden', !r.hospitalStopped); showHand();   // 10枚目: 止めた病院(U-02)
   photoUrls.forEach(u => URL.revokeObjectURL(u)); photoUrls = [];
   const live = r.cats.filter(c => c.state !== '引き継ぎ済み');
   $('#u-sos').classList.toggle('hidden', !live.length);   // 緊急ボタン: 自分の猫(引き継ぎ済みでない)がいる時だけ
@@ -473,7 +565,7 @@ async function loadCats() {
 let openId = '';
 async function openCat(id) { openId = id; view('cat'); await loadCat(); }
 async function loadCat() {
-  show($('#d-err'), ''); ['#d-scope', '#d-queue', '#d-me', '#d-seek', '#d-msg', '#d-decide', '#d-sos'].forEach(s => $(s).classList.add('hidden')); show($('#d-msg-ok'), '');
+  show($('#d-err'), ''); ['#d-scope', '#d-queue', '#d-me', '#d-seek', '#d-msg', '#d-decide', '#d-sos', '#d-close', '#d-hstop'].forEach(s => $(s).classList.add('hidden')); show($('#d-msg-ok'), '');
   const r = await api('catDetail', { catId: openId });
   if (!r.ok) { $('#d-name').textContent = ''; return seeErr(r, $('#d-err')); }
   const c = r.cat;
@@ -493,7 +585,8 @@ async function loadCat() {
       if (!confirm(c.wide ? '同じ病院の登録者だけに戻しますか?\n(もう手を挙げている人の順番は残ります)' : 'ほかの病院の登録者にも見せますか?\nいつでも戻せます。')) return;
       const res = await api('catWide', { catId: c.id, wide: !c.wide }); if (!res.ok) return show($('#d-err'), errText(res)); loadCat(); });
   }
-  if (c.own && c.state === '登録済み') {   // 急がないボタン: 飼い主だけ。緊急ボタン(管理者へ電話の流れ)とは別
+  if (c.hospitalStopped) $('#d-hstop').classList.remove('hidden');
+  if (c.own && c.state === '登録済み' && !c.hospitalStopped) {   // 急がないボタン: 飼い主だけ。緊急ボタン(管理者へ電話の流れ)とは別
     $('#d-seek').classList.remove('hidden');
     $('#d-seek-now').textContent = c.seeking ? '今は「引き継ぎ先を探しています」と出ています。病院に知らせてあります。' : '急ぎではないけれど、この先を考えて引き継ぎ先を探したい時に押します。病院にメッセージで知らせます。';
     const b = $('#d-seek-btn'); b.textContent = c.seeking ? '探すのをやめる(取り消す)' : '引き継ぎ先を探したい(急がない)'; b.className = 'btn sm' + (c.seeking ? ' sub' : '');
@@ -514,6 +607,17 @@ async function loadCat() {
       + (q.foster ? '<span class="tag g">一時預かりできる</span>' : '') + (q.life ? '<span class="tag g">終生飼養できる</span>' : '') + (!q.foster && !q.life ? '<span class="tag">印なし</span>' : '') + '</div></div>').join('')
       : '<div class="note" style="margin:0">まだ手を挙げた人はいません。</div>';
   }
+  if (c.canClose) {   // 10枚目: この猫を外す(飼い主・その猫の病院)。理由を選んで、確かめは1回
+    $('#d-close').classList.remove('hidden'); $('#d-close-why').value = ''; const closeReq = rid();
+    $('#d-close-go').onclick = () => busy($('#d-close-go'), async () => {
+      const why = $('#d-close-why').value; if (!why) return show($('#d-err'), '外す理由を選んでください。');
+      const wt = $('#d-close-why').selectedOptions[0].textContent;
+      if (!confirm(`${c.name}(${catSub(c)})を外しますか?\n理由: ${wt}\n一覧から消え、手を挙げた人には「募集は終わりました」と届きます。`)) return;
+      const res = await api('catClose', { reqId: closeReq, catId: c.id, reason: why });
+      if (!res.ok) return show($('#d-err'), errText(res));
+      alert(c.name + ' を外しました。'); view(auth.role === 'hospital' ? 'hos-home' : 'u-home');
+    });
+  }
   if (c.canSos) { $('#d-sos').classList.remove('hidden'); $('#d-sos').onclick = () => openSos([{ id: c.id, name: c.name }], c.hospital ? c.hospital.name : ''); }
   if (c.canDecide) {   // 病院: 先頭の人の「引き受ける/断った」と「引き継ぎ済み」
     $('#d-decide').classList.remove('hidden');
@@ -522,11 +626,11 @@ async function loadCat() {
     $('#d-decide-now').textContent = !head ? '並んでいる人はいません(順番が尽きたか、引き継ぎで閉じました)。' : head.accepted ? `1番目の ${head.nick} さんが引き受けると記録しました。引き継ぎが済んだら「引き継ぎ済みにする」を押します。`
       : `1番目の ${head.nick} さんに、病院から(アプリのメッセージで)聞いて、答えを記録します。`;
     const dec = (btn, decision) => busy(btn, async () => {
-      if (!confirm(decision === 'accept' ? `${head.nick} さんが引き受ける、と記録しますか?` : `${head.nick} さんが断った、と記録しますか?\n次の人が先頭になり、管理者に知らせます。`)) return;
+      if (!confirm(decision === 'accept' ? `${head.nick} さんが引き受ける、と記録しますか?` : `${head.nick} さんが断った、と記録しますか?\n次の人が先頭になります(緊急の連絡中なら、管理者にも知らせます)。`)) return;
       const res = await api('queueDecide', { catId: c.id, qid: head.qid, decision });
       if (!res.ok) return show($('#d-err'), errText(res));
       await loadCat();
-      show($('#d-decide-res'), res.accepted ? '引き受ける、と記録しました。' : (res.exhausted ? '断った、と記録しました。順番が尽きました。' : '断った、と記録しました。次の人が先頭です。') + (res.mailOk === false ? ' 管理者へのメールが送れていません(管理者の画面には載っています)。' : ' 管理者に知らせました。'));
+      show($('#d-decide-res'), res.accepted ? '引き受ける、と記録しました。' : (res.exhausted ? '断った、と記録しました。順番が尽きました。' : '断った、と記録しました。次の人が先頭です。') + (res.notified === false ? '' : res.mailOk === false ? ' 管理者へのメールが送れていません(管理者の画面には載っています)。' : ' 管理者に知らせました。'));
     });
     $('#d-accept').onclick = () => dec($('#d-accept'), 'accept'); $('#d-decline').onclick = () => dec($('#d-decline'), 'decline');
     $('#d-handover').onclick = () => busy($('#d-handover'), async () => {
@@ -573,6 +677,8 @@ $('#d-lower').onclick = () => busy($('#d-lower'), async () => {
   const r = await api('queueLower', { catId: openId }); if (!r.ok && r.error !== 'not_raised') return show($('#d-err'), errText(r)); loadCat(); });
 async function loadSettings() {
   setHeader('設定', auth.nick || '', true); show($('#s-err'), ''); show($('#s-ok'), '');
+  $('#s-marks').classList.toggle('hidden', auth.wants === 'owner');   // 飼い主だけの人は、印の欄を出さない(ログアウトだけ)
+  if (auth.wants === 'owner') return;
   const r = await api('userHome'); if (!r.ok) return seeErr(r, $('#s-err'));
   const m = r.marks || { foster: false, life: false }; $('#s-foster').checked = m.foster; $('#s-life').checked = m.life;
 }
@@ -618,7 +724,7 @@ async function loadSos() {
     const d = document.createElement('div'); d.className = 'card' + (x.open ? ' sosrow' : ''); d.dataset.sos = x.id;
     const catLine = '猫: ' + x.cat + (x.kind === '緊急' ? (x.ownerNick ? `(飼い主 ${x.ownerNick})` : '') + (x.byRole === '病院' ? ' ・ 病院が押した' : '') : ' → ' + x.next);
     d.innerHTML = `<span class="tag r">${esc(x.kind)}</span><span class="note">${esc(timeText(x.at))}</span>${x.mailNg ? ' <span class="tag r" data-mailng="1">メールが送れていない</span>' : ''}`
-      + `<div class="big" style="font-size:18px">${esc(x.hospital)}</div><a class="sostel" href="tel:${esc(x.phone)}">☎ ${esc(x.phone)}</a><div class="note" style="margin:0">${esc(catLine)}</div>`
+      + `<div class="big" style="font-size:18px">${esc(x.hospital)}${x.hospitalStopped ? ' <span class="tag r" data-hstop="1">止めた病院</span>' : ''}</div><a class="sostel" href="tel:${esc(x.phone)}">☎ ${esc(x.phone)}</a><div class="note" style="margin:0">${esc(catLine)}</div>`
       + `<div style="text-align:right">${x.mailNg ? '<button class="btn sm sub" type="button" data-resend="1">メールを送り直す</button>' : ''}${x.open ? '<button class="btn sm" type="button" data-done="1">連絡済み</button>' : '<span class="tag g">連絡済み</span>'}</div>`;
     const b = d.querySelector('[data-done]'), req = rid(), rb = d.querySelector('[data-resend]');
     if (rb) { let rreq = rid(); rb.onclick = () => busy(rb, async () => {   // 5枚目: 送れなかったメールを1回送り直す(送れたら印が消える)
