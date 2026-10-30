@@ -1,0 +1,95 @@
+/* まつにゃん v7。色と形は見本(20261029-0050-matsunyan-mock/gen/build.py)のまま */
+:root { --bg: #fbf3e6; --main: #a8461f; --sos: #c4161c; --ink: #2b2118; --sub: #5e4e3d; --line: #e3d3bd; --field: #cdb99d; --codebg: #fff3df; --navink: #6b5a48; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); font-family: "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", system-ui, sans-serif; color: var(--ink); font-size: 17px; }
+body { min-height: 100vh; display: flex; flex-direction: column; }
+header { background: var(--main); color: #fff; padding: 14px 16px; display: flex; align-items: center; gap: 10px; min-height: 56px; position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 20px; margin: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+header .who { font-size: 13px; opacity: .9; }
+header button.who { background: none; border: 1px solid #fff8; color: #fff; border-radius: 8px; padding: 4px 8px; font-size: 13px; }
+main { flex: 1; padding: 12px 12px 90px; max-width: 640px; width: 100%; margin: 0 auto; }
+nav { display: flex; background: #fff; border-top: 2px solid var(--line); position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; }
+nav button { flex: 1; text-align: center; padding: 9px 0 11px; font-size: 14px; min-height: 62px; color: var(--navink); background: none; border: 0; font-family: inherit; }
+nav button b { display: block; font-size: 22px; line-height: 28px; font-weight: normal; }
+nav button.on { color: var(--main); font-weight: bold; border-top: 4px solid var(--main); margin-top: -2px; }
+.hidden { display: none !important; }
+.card { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px #0003; }
+.card.center { text-align: center; }
+h3 { font-size: 17px; margin: 2px 0 8px; }
+.note { font-size: 14px; color: var(--sub); margin: 4px 0; }
+.btn { display: block; width: 100%; min-height: 56px; border-radius: 12px; border: 0; background: var(--main); color: #fff; font-size: 19px; font-weight: bold; text-align: center; margin: 8px 0; font-family: inherit; cursor: pointer; }
+.btn.sub { background: #fff; color: var(--main); border: 2px solid var(--main); }
+.btn.sm { min-height: 46px; font-size: 16px; width: auto; display: inline-block; padding: 0 14px; margin: 4px 4px 4px 0; }
+.btn:disabled { opacity: .55; }
+.field { width: 100%; border: 2px solid var(--field); border-radius: 10px; background: #fff; min-height: 48px; padding: 10px 12px; font-size: 17px; margin: 4px 0 10px; color: var(--ink); font-family: inherit; }
+.field.pin { font-size: 30px; letter-spacing: .3em; text-align: center; }
+label { font-size: 15px; font-weight: bold; display: block; }
+label.check { font-weight: normal; display: flex; gap: 10px; align-items: center; margin: 6px 0 10px; }
+label.check input { width: 26px; height: 26px; }
+.row { display: flex; gap: 10px; align-items: center; }
+.row .grow { flex: 1; min-width: 0; }
+.tag { display: inline-block; font-size: 13px; font-weight: bold; border-radius: 10px; padding: 2px 8px; background: #f6e3c4; color: #7a3a10; margin: 2px 2px 2px 0; }
+.tag.g { background: #dcebd6; color: #2d5a22; } .tag.r { background: #fbd9d9; color: #8a1015; }
+.code { font-family: "DejaVu Sans Mono", monospace; font-size: 40px; letter-spacing: .1em; white-space: nowrap; text-align: center; color: var(--main); font-weight: bold; padding: 10px 0; background: var(--codebg); border-radius: 12px; border: 3px dashed var(--main); margin: 6px 0; }
+.big { font-size: 20px; font-weight: bold; }
+.tel { color: var(--main); font-size: 20px; font-weight: bold; }
+.qr { display: block; margin: 8px auto; image-rendering: pixelated; width: 220px; height: 220px; }
+.err { background: #fbd9d9; color: #8a1015; border-radius: 10px; padding: 8px 12px; font-size: 15px; margin: 6px 0; }
+.ok { background: #dcebd6; color: #2d5a22; border-radius: 10px; padding: 8px 12px; font-size: 15px; margin: 6px 0; }
+.secret { font-family: "DejaVu Sans Mono", monospace; font-size: 12px; word-break: break-all; background: var(--codebg); border-radius: 8px; padding: 6px; }
+hr { border: 0; border-top: 1px solid #eadcc6; margin: 8px 0; }
+#gsi-btn { display: flex; justify-content: center; min-height: 44px; margin: 8px 0; }
+/* 2枚目: 登録・猫・確認待ち(見本 1・2・3・6) */
+.center { text-align: center; }
+.field.codein { font-size: 34px; letter-spacing: .5em; text-align: center; font-family: "DejaVu Sans Mono", monospace; }
+.choice { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 12px; }
+.choice label { font-weight: normal; border: 2px solid var(--field); border-radius: 10px; padding: 8px 10px; background: #fff; display: flex; gap: 6px; align-items: center; }
+.choice label:has(input:checked) { border-color: var(--main); color: var(--main); font-weight: bold; background: var(--codebg); }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.phrow { display: flex; gap: 14px; align-items: center; margin-bottom: 8px; }
+.ph { width: 82px; height: 82px; border-radius: 12px; background: #e8d5b8; display: flex; align-items: center; justify-content: center; font-size: 40px; overflow: hidden; flex: none; cursor: pointer; }
+.ph img { width: 100%; height: 100%; object-fit: cover; }
+.wait { background: var(--codebg); border: 2px solid #e0a000; border-radius: 12px; padding: 8px 12px; text-align: center; color: #8a4b00; margin: 6px 0; }
+.waitbox { border: 2px solid #e0a000; }
+.cat { display: flex; gap: 12px; align-items: center; }
+.cat .ph { width: 76px; height: 76px; font-size: 36px; }
+.cat .big { font-size: 20px; }
+.cat .grow { flex: 1; min-width: 0; }
+.btn2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn2 .btn { margin: 8px 0 2px; min-height: 48px; font-size: 17px; }
+.fixnote { background: #fbd9d9; color: #8a1015; border-radius: 8px; padding: 6px 8px; font-size: 14px; margin-top: 6px; }
+@media print { header, nav, .noprint { display: none !important; } main { padding: 0; } .card { box-shadow: none; border: 1px solid #999; } }
+/* 3枚目の前半: 猫の一覧・詳しい画面・順番(見本 4・5) */
+.lcard { cursor: pointer; }
+.lcard .row { margin-top: 6px; }
+.ph.lg { width: 96px; height: 96px; font-size: 50px; }
+.ord { width: 34px; height: 34px; border-radius: 17px; background: var(--main); color: #fff; font-weight: bold; display: flex; align-items: center; justify-content: center; flex: none; font-size: 18px; }
+.qrow { margin: 6px 0; }
+.qrow .big { font-size: 19px; }
+/* 3枚目の後半: メッセージ(見本 2・6)・約束ではない の文・年1回・数の印 */
+.msg { background: #fff; border-radius: 12px; padding: 8px 12px; margin-bottom: 8px; font-size: 15px; border-left: 5px solid #a8461f; white-space: pre-wrap; word-break: break-word; cursor: pointer; }
+.msg small { color: #7a6a58; display: block; white-space: normal; }
+.msg.unread { background: #fff3df; }
+.promise { background: #fff3df; border: 1px solid #e3d3bd; border-radius: 10px; padding: 8px 10px; margin: 10px 0; font-size: 14px; }
+.renewbar { border: 2px solid #e0a800; }
+nav button { position: relative; }
+nav .badge { position: absolute; top: 4px; left: 50%; margin-left: 8px; background: #c4161c; color: #fff; border-radius: 10px; font-size: 12px; line-height: 18px; min-width: 18px; padding: 0 5px; font-weight: bold; }
+textarea.field { resize: vertical; font-family: inherit; }
+/* 4枚目: 緊急ボタン(見本 2・5・6・8)・管理者の「電話が必要な連絡」(見本 7)。緊急だけ赤 #c4161c */
+button.sos { display: block; width: 100%; border: 0; font-family: inherit; cursor: pointer; }
+.sos { background: var(--sos); color: #fff; border-radius: 16px; text-align: center; font-size: 26px; font-weight: bold; padding: 18px 8px; margin: 6px 0 10px; box-shadow: 0 3px 0 #7d0c10; }
+.sos small { display: block; font-size: 14px; font-weight: normal; margin-top: 4px; }
+.sos:disabled { opacity: .55; }
+#sos-modal { position: fixed; inset: 0; z-index: 20; }
+.modalbg { position: absolute; inset: 0; background: #000a; }
+.sosbox { position: absolute; left: 18px; right: 18px; top: 120px; max-width: 520px; margin: 0 auto; background: #fff; border-radius: 20px; padding: 20px; text-align: center; box-shadow: 0 6px 20px #0007; }
+.sosrow { border: 2px solid var(--sos); }
+.sostel { color: var(--main); font-size: 22px; font-weight: bold; text-decoration: none; display: block; }
+/* 5枚目の前半: つかい方・利用のきまりのページ(同じ色と形) */
+header a.helpln { color: #fff; text-decoration: none; border: 1px solid #fff8; border-radius: 8px; padding: 4px 8px; white-space: nowrap; }
+.doc h2 { font-size: 18px; color: var(--main); margin: 4px 0 6px; }
+.doc p, .doc li { font-size: 16px; line-height: 1.7; margin: 4px 0; }
+.doc ul, .doc ol { padding-left: 1.3em; margin: 4px 0; }
+.doc .fig { border: 2px dashed var(--field); border-radius: 10px; background: var(--codebg); color: var(--sub); font-size: 13px; text-align: center; padding: 8px; margin: 6px 0; }
+.doc .sosnote { color: var(--sos); font-weight: bold; }
+.doc a { color: var(--main); }

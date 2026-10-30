@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#a8461f">
+<meta name="app-ver" content="matsunyan-v7">
+<title>まつにゃん</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="style.css?v=7">
+</head>
+<body>
+<header><h1 id="title">まつにゃん</h1><span class="who" id="who"></span><a class="who helpln" id="help-link" href="help.html">つかい方</a><button class="who hidden" id="logout" type="button">ログアウト</button></header>
+<main>
+  <!-- 起動中 -->
+  <section id="v-boot" class="view"><div class="card center"><div class="note">読み込み中…</div></div></section>
+
+  <!-- ログイン -->
+  <section id="v-login" class="view hidden">
+    <div class="card center"><div class="big" style="font-size:22px;margin:6px 0">まつにゃん</div><div class="note">飼えなくなった猫を、病院を通して次の人へつなぎます</div></div>
+    <div class="card">
+      <h3>ログインカードで入る</h3>
+      <div class="note">カードの QR をスマホのカメラで読むと、この画面に来ます。</div>
+      <div id="card-ready" class="hidden"><div class="ok">カードを読みました</div></div>
+      <div id="card-paste">
+        <label for="card-url">カードの URL(QR が読めない時)</label>
+        <input id="card-url" class="field" type="url" autocomplete="off" placeholder="https://…#card=…">
+      </div>
+      <label for="card-pin">暗証番号(4けた)</label>
+      <input id="card-pin" class="field pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+      <div id="card-err" class="err hidden"></div>
+      <button id="card-go" class="btn" type="button">入る</button>
+    </div>
+    <div class="card">
+      <h3>管理者</h3>
+      <div class="note">管理者は Google でログインします。</div>
+      <div id="gsi-btn"></div>
+      <div id="admin-err" class="err hidden"></div>
+    </div>
+  </section>
+
+  <!-- QR を読んだ人(病院で登録) -->
+  <section id="v-hreg" class="view hidden">
+    <div class="card center"><div class="note">QRを読みました</div><div class="big" style="font-size:24px;margin:6px 0" id="hreg-name">…</div><div class="note" id="hreg-ward"></div></div>
+    <div class="card" id="hreg-form">
+      <label for="r-nick">1. 呼び名</label>
+      <input id="r-nick" class="field" maxlength="20" autocomplete="off" placeholder="例: たなか">
+      <label for="r-code">2. 病院の人から聞いた確認の番号</label>
+      <div class="note" style="margin-top:0">病院の画面に出ています(毎日変わります)</div>
+      <input id="r-code" class="field codein" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="______">
+      <label>3. どちらで使いますか</label>
+      <div class="choice" id="r-wants">
+        <label><input type="radio" name="wants" value="owner"> 飼い主</label>
+        <label><input type="radio" name="wants" value="adopter"> 引き取ってもよい人</label>
+        <label><input type="radio" name="wants" value="both"> 両方</label>
+      </div>
+      <div id="r-marks" class="hidden">
+        <label>引き取る時にできること(あとから設定で変えられます)</label>
+        <label class="check"><input type="checkbox" id="r-foster"> 一時預かりできる</label>
+        <label class="check"><input type="checkbox" id="r-life"> 終生飼養できる</label>
+      </div>
+      <div id="r-owner-note" class="promise hidden">飼い主の登録は、飼えなくなった時の<b>備えの登録</b>です。病院が引き取りや引き継ぎの成立を約束するものではありません。</div>
+      <div id="r-agree-box" class="promise hidden">
+        <div>この登録は<b>引き取りの約束ではありません</b>。条件が合えば相談を受けて検討する、という意思の登録です。</div>
+        <label class="check"><input type="checkbox" id="r-agree"> わかりました(同意する)</label>
+      </div>
+      <label for="r-pin">4. 暗証番号(4けた・自分で決める)</label>
+      <input id="r-pin" class="field pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    </div>
+    <div class="note center" id="hreg-privacy">電話番号・住所・メールは入れません。<br>呼び名とかかりつけの病院だけ登録されます。<br><a id="terms-link" href="terms.html">利用のきまりと個人情報の扱い</a>(登録の前に読んでください)</div>
+    <div id="hreg-err" class="err hidden"></div>
+    <button id="hreg-go" class="btn" type="button">登録する</button>
+  </section>
+
+  <!-- 作り直しの QR を読んだ人(本人のスマホ・6枚目) -->
+  <section id="v-reissue" class="view hidden">
+    <div class="card center"><div class="note">カードの作り直し</div><div class="big" style="font-size:24px;margin:6px 0" id="ri-name">…</div><div class="note" id="ri-hos"></div></div>
+    <div class="card" id="ri-form">
+      <label for="ri-pin">新しい暗証番号(4けた・自分で決める)</label>
+      <input id="ri-pin" class="field pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+      <label for="ri-pin2">もう一度(たしかめ)</label>
+      <input id="ri-pin2" class="field pin" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off">
+    </div>
+    <div id="ri-err" class="err hidden"></div>
+    <button id="ri-go" class="btn" type="button">新しいカードを作る</button>
+  </section>
+
+  <!-- 登録した人のログインカード -->
+  <section id="v-ucard" class="view hidden">
+    <div class="card">
+      <h3>あなたのログインカード</h3>
+      <div class="note">この QR と暗証番号で入ります。<b>QR が出るのはこの1回だけ</b>です。印刷するか、画面を写真に残してください。暗証番号は書かないでください。</div>
+      <canvas class="qr" id="ucard-qr"></canvas>
+      <div class="big center" id="ucard-nick" style="text-align:center"></div>
+      <div class="note center" id="ucard-hos" style="text-align:center"></div>
+      <div class="note noprint">カードの URL:</div><div class="secret noprint" id="ucard-url"></div>
+      <button class="btn sub noprint" id="ucard-print" type="button">印刷する</button>
+      <button class="btn noprint" id="ucard-go" type="button">このカードで入る</button>
+    </div>
+  </section>
+
+  <!-- 利用者: ホーム -->
+  <section id="v-u-home" class="view hidden">
+    <div class="note" id="u-line"></div>
+    <button class="sos hidden" id="u-sos" type="button">🚨 緊急ボタン<small>飼えなくなったとき、ここを押します</small></button>
+    <div class="card renewbar hidden" id="u-renew"><b>登録を続けますか</b><div class="note" style="margin:2px 0" id="u-renew-txt"></div><button class="btn sm" type="button" id="u-renew-go">確かめる</button></div>
+    <h3 id="u-cats-title">わたしの猫</h3>
+    <div id="u-cats"></div>
+    <h3>メッセージ <span class="tag r hidden" id="u-unread"></span></h3>
+    <div id="u-msgs"></div>
+    <div id="u-err" class="err hidden"></div>
+  </section>
+
+  <!-- 利用者: 猫を登録 -->
+  <section id="v-u-cat" class="view hidden">
+    <div class="phrow">
+      <label class="ph" for="c-photo" id="c-ph"><span>📷</span></label>
+      <div><div class="big">写真を入れる</div><div class="note" style="margin:2px 0">顔がわかる写真</div></div>
+      <input type="file" id="c-photo" accept="image/*" class="hidden">
+    </div>
+    <div class="grid2">
+      <div><label for="c-name">名前</label><input id="c-name" class="field" maxlength="20" autocomplete="off"></div>
+      <div><label for="c-age">年齢</label><input id="c-age" class="field" maxlength="10" autocomplete="off" placeholder="例: 10歳"></div>
+      <div><label for="c-sex">性別</label><select id="c-sex" class="field"><option value="">選ぶ</option><option>オス</option><option>メス</option><option>わからない</option></select></div>
+      <div><label for="c-color">毛色</label><input id="c-color" class="field" maxlength="20" autocomplete="off"></div>
+    </div>
+    <label for="c-nature">性格</label><input id="c-nature" class="field" maxlength="60" autocomplete="off">
+    <label for="c-illness">持病</label><input id="c-illness" class="field" maxlength="60" autocomplete="off">
+    <div class="grid2">
+      <div><label for="c-vaccine">ワクチン</label><input id="c-vaccine" class="field" maxlength="30" autocomplete="off"></div>
+      <div><label for="c-neuter">不妊手術</label><select id="c-neuter" class="field"><option value="">選ぶ</option><option>済み</option><option>まだ</option><option>わからない</option></select></div>
+    </div>
+    <div class="wait"><b>⏳ 病院の確認待ち</b><div class="note" style="margin:2px 0">病院の人が確認すると登録されます</div></div>
+    <div id="c-err" class="err hidden"></div>
+    <button id="c-go" class="btn" type="button">病院に送る</button>
+  </section>
+
+  <!-- 猫の一覧(利用者・病院・管理者。見える範囲は受け付けが決める) -->
+  <section id="v-cats" class="view hidden">
+    <div class="note" style="margin:0 0 6px" id="l-line"></div>
+    <div id="l-cats"></div>
+    <div id="l-err" class="err hidden"></div>
+  </section>
+
+  <!-- 猫の詳しい画面 -->
+  <section id="v-cat" class="view hidden">
+    <div class="card cat" id="d-head"><div class="ph lg">🐱</div><div class="grow"><div class="big" id="d-name"></div><div class="note" style="margin:0" id="d-sub"></div><div id="d-tags"></div></div></div>
+    <div class="card"><div class="note" style="margin:0" id="d-info"></div></div>
+    <div class="card hidden" id="d-scope"><h3>見える範囲</h3><div class="note" style="margin:0 0 4px" id="d-scope-now"></div><button class="btn sm sub" type="button" id="d-wide"></button></div>
+    <div class="card hidden" id="d-queue"><h3>手を挙げた人(挙げた順)</h3><div id="d-qlist"></div><div class="note">この一覧は、飼い主・病院・管理者だけに見えます</div></div>
+    <div class="card hidden" id="d-seek"><h3>引き継ぎ先を探したい(急がない)</h3><div class="note" style="margin:0 0 6px" id="d-seek-now"></div><button class="btn sm" type="button" id="d-seek-btn"></button></div>
+    <div class="card hidden" id="d-msg"><h3 id="d-msg-h">メッセージを送る</h3>
+      <label for="d-msg-to">あて先</label><select id="d-msg-to" class="field"></select>
+      <label for="d-msg-text">本文(300字まで)</label><textarea id="d-msg-text" class="field" rows="3" maxlength="300"></textarea>
+      <div class="note" style="margin:2px 0">電話番号・メール・住所は書けません。連絡は病院を通します。</div>
+      <div id="d-msg-ok" class="ok hidden"></div>
+      <button class="btn sm" type="button" id="d-msg-go">送る</button></div>
+    <div class="card hidden" id="d-me"><div id="d-mytag"></div><button class="btn" type="button" id="d-raise">手を挙げる</button><button class="btn sub" type="button" id="d-lower">手を下ろす</button></div>
+    <div class="card hidden" id="d-decide"><h3>順番の先頭の人(病院が記録)</h3><div class="note" style="margin:0 0 6px" id="d-decide-now"></div>
+      <div class="btn2" id="d-decide-btns"><button class="btn" type="button" id="d-accept">引き受ける</button><button class="btn sub" type="button" id="d-decline">断った</button></div>
+      <button class="btn hidden" type="button" id="d-handover">引き継ぎ済みにする</button><div id="d-decide-res" class="ok hidden"></div></div>
+    <button class="sos hidden" id="d-sos" type="button" style="font-size:20px;padding:12px">🚨 緊急ボタン</button>
+    <div id="d-err" class="err hidden"></div>
+  </section>
+
+  <!-- メッセージ(利用者・病院。アプリの中だけ) -->
+  <section id="v-msgs" class="view hidden">
+    <div class="note" style="margin:0 0 6px">アプリの中だけのやりとりです。連絡は病院を通します。</div>
+    <div id="m-list"></div>
+    <div id="m-err" class="err hidden"></div>
+  </section>
+
+  <!-- 年1回の確認 -->
+  <section id="v-renew" class="view hidden">
+    <div class="card">
+      <h3>登録を続けますか</h3>
+      <div class="note" id="rn-txt"></div>
+      <div class="promise" id="rn-promise">引き取ってもよい人の登録は、引き取りの約束ではなく、条件が合えば相談を受けて検討する、という意思の登録です。</div>
+      <div id="rn-err" class="err hidden"></div>
+      <button class="btn" type="button" id="rn-go">続ける</button>
+      <button class="btn sub" type="button" id="rn-later">あとで</button>
+    </div>
+  </section>
+
+  <!-- 利用者: 設定(引き取る人の印) -->
+  <section id="v-u-set" class="view hidden">
+    <div class="card">
+      <h3>引き取る時にできること</h3>
+      <div class="note">手を挙げた時に、飼い主と病院に印として見えます。</div>
+      <label class="check"><input type="checkbox" id="s-foster"> 一時預かりできる</label>
+      <label class="check"><input type="checkbox" id="s-life"> 終生飼養できる</label>
+      <div id="s-err" class="err hidden"></div><div id="s-ok" class="ok hidden"></div>
+      <button class="btn" type="button" id="s-go">保存する</button>
+    </div>
+  </section>
+
+  <!-- 管理者: 電話が必要な連絡(見本 7) -->
+  <section id="v-admin-sos" class="view hidden">
+    <h3 style="font-size:19px">電話が必要な連絡 <span class="tag r" id="sos-n">0件</span></h3>
+    <div id="sos-list"></div>
+    <div id="sos-err" class="err hidden"></div>
+  </section>
+
+  <!-- 管理者: 病院の一覧 -->
+  <section id="v-admin-list" class="view hidden">
+    <h3>病院の一覧 <span class="tag" id="h-count">0件</span></h3>
+    <div id="h-list"></div>
+    <div id="list-err" class="err hidden"></div>
+  </section>
+
+  <!-- 管理者: 病院を登録 -->
+  <section id="v-admin-add" class="view hidden">
+    <div class="card" id="add-form">
+      <h3>病院を登録</h3>
+      <label for="h-name">病院の名前</label><input id="h-name" class="field" maxlength="40" autocomplete="off">
+      <label for="h-ward">区(名古屋市)</label><select id="h-ward" class="field"></select>
+      <label for="h-phone">病院の電話番号</label><input id="h-phone" class="field" type="tel" maxlength="15" autocomplete="off">
+      <label class="check"><input type="checkbox" id="h-nagoya"> 名古屋市内の病院であることを確かめました</label>
+      <label for="h-pin">病院のカードの暗証番号(4けた・病院に伝える)</label>
+      <input id="h-pin" class="field pin" inputmode="numeric" maxlength="4" autocomplete="off">
+      <div id="add-err" class="err hidden"></div>
+      <button id="add-go" class="btn" type="button">登録して、カードを作る</button>
+    </div>
+    <div class="card hidden" id="card-out">
+      <h3 id="card-out-title">病院のログインカード</h3>
+      <div class="note">この QR と暗証番号で、病院の人が入ります。<b>QR が出るのはこの1回だけ</b>です。印刷して病院に渡してください。</div>
+      <canvas class="qr" id="card-qr"></canvas>
+      <div class="big center" id="card-out-name" style="text-align:center"></div>
+      <div class="note noprint">カードの URL:</div><div class="secret noprint" id="card-out-url"></div>
+      <button class="btn sub noprint" id="card-print" type="button">印刷する</button>
+      <button class="btn noprint" id="card-done" type="button">閉じて一覧へ</button>
+    </div>
+  </section>
+
+  <!-- 病院: ホーム(今日の確認の番号) -->
+  <section id="v-hos-home" class="view hidden">
+    <div class="card center"><div class="note" style="margin:0" id="code-label">今日の確認の番号</div><div class="code" id="code">------</div><div class="note" style="margin:0">毎日0時に変わります。来た人に口で伝えます</div></div>
+    <div class="card waitbox" id="hos-pend-box"><h3>確認待ちの猫 <span class="tag r" id="hos-pend-n">0件</span></h3><div id="hos-pend"></div></div>
+    <button class="sos" id="hos-sos" type="button" style="font-size:22px;padding:14px">🚨 緊急ボタン<small>病院から知らせるとき</small></button>
+    <div class="card hidden" id="hos-seek-box"><h3>引き継ぎ先を探している猫(急がない) <span class="tag" id="hos-seek-n"></span></h3><div id="hos-seek"></div></div>
+    <div class="card"><div class="note" style="margin:0" id="hos-counts"></div><div class="note" style="margin:4px 0 0" id="hos-renew"></div></div>
+    <div class="card"><div class="note" style="margin:0" id="hos-info"></div></div>
+    <button class="btn sub" id="hos-users-go" type="button">利用者のカードを作り直す</button>
+    <div id="hos-err" class="err hidden"></div>
+  </section>
+
+  <!-- 病院: 利用者のカードを作り直す(6枚目)。呼び名で探す → 本人がいることを確かめる → 本人のスマホで QR を読む -->
+  <section id="v-hos-users" class="view hidden">
+    <div class="card">
+      <h3>利用者のカードを作り直す</h3>
+      <div class="note" style="margin-top:0">暗証番号を忘れた人・カードをなくした人のカードを作り直します。この病院で登録した人だけが出ます。</div>
+      <label for="hu-q">呼び名で探す</label>
+      <div class="row"><input id="hu-q" class="field grow" maxlength="20" autocomplete="off" placeholder="例: たなか"><button class="btn sm" id="hu-search" type="button">探す</button></div>
+      <div class="note" id="hu-count"></div>
+    </div>
+    <div id="hu-list"></div>
+    <div id="hu-err" class="err hidden"></div>
+  </section>
+  <section id="v-hos-reissue" class="view hidden">
+    <div class="card" id="hr-ask">
+      <h3><span id="hr-nick"></span> さんのカードを作り直す</h3>
+      <div class="note" id="hr-meta"></div>
+      <div class="promise">作り直すと、<b>前のカードはすぐに使えなくなります</b>。猫・手を挙げた順番・メッセージはそのまま残ります。</div>
+      <label class="check"><input type="checkbox" id="hr-here"> 本人がここにいることを確かめた</label>
+      <div id="hr-err" class="err hidden"></div>
+      <button class="btn" id="hr-go" type="button">作り直す</button>
+      <button class="btn sub" id="hr-back" type="button">やめる</button>
+    </div>
+    <div class="card center hidden" id="hr-out">
+      <h3>本人のスマホで読んでもらう QR</h3>
+      <div class="note">本人のスマホのカメラで読むと、新しい暗証番号を決める画面が開きます。<b><span id="hr-min">15</span>分だけ・1回だけ</b>使えます。</div>
+      <canvas class="qr" id="hr-qr"></canvas>
+      <div class="big" id="hr-out-nick"></div>
+      <button class="btn noprint" id="hr-done" type="button">閉じる</button>
+    </div>
+  </section>
+
+  <!-- 病院: 病院の QR -->
+  <section id="v-hos-qr" class="view hidden">
+    <div class="card center">
+      <h3>この病院の QR</h3>
+      <div class="note">登録する人に読んでもらいます。この QR は毎日は変わりません。</div>
+      <canvas class="qr" id="hos-qr"></canvas>
+      <div class="big" id="hos-qr-name"></div>
+      <button class="btn sub noprint" id="hos-print" type="button">印刷する</button>
+    </div>
+  </section>
+</main>
+<!-- 緊急ボタンの確かめ(見本 8) -->
+<div id="sos-modal" class="hidden"><div class="modalbg"></div>
+  <div class="sosbox" id="sos-ask"><div style="font-size:52px">🚨</div><div class="big" style="font-size:24px;margin:6px 0">本当に知らせますか？</div>
+    <div class="note" style="font-size:16px">管理者に知らせます。<br>管理者が病院に電話します。</div>
+    <select id="sos-cat" class="field hidden"></select>
+    <div class="note" id="sos-what"></div>
+    <button class="sos" type="button" id="sos-yes" style="font-size:24px;box-shadow:none">はい、知らせます</button>
+    <button class="btn sub" type="button" id="sos-no">やめる</button></div>
+  <div class="sosbox hidden" id="sos-res"><div style="font-size:52px">🚨</div><div id="sos-res-txt"></div><button class="btn" type="button" id="sos-close">閉じる</button></div>
+</div>
+<nav id="nav" class="hidden"></nav>
+<script src="config.js?v=7"></script>
+<script src="lib/qr.js?v=7"></script>
+<script src="app.js?v=7"></script>
+</body>
+</html>
